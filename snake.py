@@ -70,23 +70,23 @@ class snake:
         # novo POS da cabeça
         self.POS = new_head
 
-        # mover corpo: cada célula vai para posição da célula da frente
+        # mover corpo
         new_body = [new_head]
         for i in range(1, len(self.body)):
             new_body.append(self.body[i - 1])
 
         self.body = new_body
 
-    def user_move(self):
-        """Lê as teclas e ajusta a orientação da snake."""
-        keys = pygame.key.get_pressed()
+    # def user_move(self):
+    #     """Lê as teclas e ajusta a orientação da snake."""
+    #     keys = pygame.key.get_pressed()
 
-        # evita virar diretamente para o lado oposto
-        if keys[pygame.K_RIGHT] and self.orientation != "left":
-            self.orientation = "right"
-        elif keys[pygame.K_LEFT] and self.orientation != "right":
-            self.orientation = "left"
-        elif keys[pygame.K_UP] and self.orientation != "down":
-            self.orientation = "up"
-        elif keys[pygame.K_DOWN] and self.orientation != "up":
-            self.orientation = "down"
+    #     # evita virar diretamente para o lado oposto
+    #     if keys[pygame.K_RIGHT] and self.orientation != "left":
+    #         self.orientation = "right"
+    #     elif keys[pygame.K_LEFT] and self.orientation != "right":
+    #         self.orientation = "left"
+    #     elif keys[pygame.K_UP] and self.orientation != "down":
+    #         self.orientation = "up"
+    #     elif keys[pygame.K_DOWN] and self.orientation != "up":
+    #         self.orientation = "down"

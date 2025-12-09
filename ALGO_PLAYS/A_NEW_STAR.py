@@ -2,13 +2,12 @@ import heapq
 import itertools
 
 class Node:
-    """Classe auxiliar para o algoritmo A*"""
     def __init__(self, position, parent=None):
         self.position = position
         self.parent = parent
-        self.g = 0  # Custo do início até aqui
-        self.h = 0  # Heurística (distância estimada até o fim)
-        self.f = 0  # Custo total (g + h)
+        self.g = 0
+        self.h = 0
+        self.f = 0
 
     def __lt__(self, other):
         return self.f < other.f
@@ -19,30 +18,47 @@ class A_Star:
         self.cols = cols
 
     def heuristic(self, a, b):
-        """Calcula a distância Manhattan (grid)"""
-        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+        """
+        Calcula a distância Manhattan considerando o wrap-around.
+        O algoritmo escolhe o menor caminho: direto ou dando a volta no mundo.
+        """
+        r1, c1 = a
+        r2, c2 = b
+        
+        # Distância absoluta linear
+        dr = abs(r1 - r2)
+        dc = abs(c1 - c2)
+        
+        # Escolhe o menor entre: distância direta vs dar a volta pelo outro lado
+        dr = min(dr, self.rows - dr)
+        dc = min(dc, self.cols - dc)
+        
+        return dr + dc
 
     def get_neighbors(self, node, obstacles):
-        """Retorna vizinhos válidos (não são obstáculos e estão dentro do grid)"""
+        """
+        Retorna vizinhos considerando que o grid 'dá a volta' (toroide).
+        """
         neighbors = []
-        # Cima, Baixo, Esquerda, Direita
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1)] 
 
         for dr, dc in directions:
-            r, c = node.position[0] + dr, node.position[1] + dc
+            # Calcula posição crua
+            raw_r = node.position[0] + dr
+            raw_c = node.position[1] + dc
+            
+            # Aplica o wrap (módulo)
+            # Se raw_r for -1, vira rows-1. Se for rows, vira 0.
+            r = raw_r % self.rows
+            c = raw_c % self.cols
 
-            # Verifica limites do grid
-            if 0 <= r < self.rows and 0 <= c < self.cols:
-                # Verifica se não é obstáculo (corpo da snake)
-                if (r, c) not in obstacles:
-                    neighbors.append((r, c))
+            # Verifica se não é obstáculo
+            if (r, c) not in obstacles:
+                neighbors.append((r, c))
+                
         return neighbors
 
     def a_star_search(self, start, end, obstacles):
-        """
-        Executa o A* entre start e end.
-        Retorna: (caminho_lista, custo) ou (None, infinity) se falhar.
-        """
         open_list = []
         closed_set = set()
 
@@ -55,14 +71,13 @@ class A_Star:
             current_node = heapq.heappop(open_list)
             closed_set.add(current_node.position)
 
-            # Encontrou o objetivo
             if current_node.position == end:
                 path = []
                 current = current_node
                 while current:
                     path.append(current.position)
                     current = current.parent
-                return path[::-1], len(path) # Retorna caminho invertido e custo
+                return path[::-1], len(path)
 
             neighbors = self.get_neighbors(current_node, obstacles)
             
@@ -75,71 +90,59 @@ class A_Star:
                 neighbor.h = self.heuristic(neighbor.position, end_node.position)
                 neighbor.f = neighbor.g + neighbor.h
 
-                # Verifica se já existe um caminho melhor na open_list
-                # (Simplificação: apenas adiciona, heapq lida com a ordem)
+                # Nota: Em implementações completas do A*, verificaríamos se 
+                # o vizinho já está na open_list com um g menor. 
+                # Para grid simples uniformes, adicionar direto funciona bem.
                 heapq.heappush(open_list, neighbor)
 
         return None, float('inf')
 
     def find_best_path_tsp(self, start_pos, food_positions, snake_body):
         """
-        Resolve o problema do Caixeiro Viajante (TSP) para as comidas disponíveis.
-        1. Calcula distâncias entre S->Foods e Foods->Foods.
-        2. Testa todas as permutações de ordem.
-        3. Retorna o caminho IMEDIATO para o primeiro alvo da melhor sequência.
+        Lógica do Caixeiro Viajante (igual à anterior, mas usando o A* atualizado).
         """
         if not food_positions:
             return []
 
-        # O corpo da cobra é obstáculo, mas a cabeça (start_pos) não deve contar como colisão no início
         obstacles = set(snake_body)
         if start_pos in obstacles:
             obstacles.remove(start_pos)
 
-        # Gerar permutações (ex: [A, B, C], [A, C, B], [B, A, C]...)
         perms = list(itertools.permutations(food_positions))
         
         best_cost = float('inf')
         best_first_path = None
         
-        # Cache de distâncias para evitar recalcular A* repetidamente para os mesmos pares
         distance_cache = {} 
 
         def get_path_cost(p1, p2):
-            """Helper com cache"""
             key = (p1, p2)
             if key not in distance_cache:
                 path, cost = self.a_star_search(p1, p2, obstacles)
                 distance_cache[key] = (path, cost)
             return distance_cache[key]
 
-        # Avaliar cada permutação
         for perm in perms:
             current_cost = 0
             current_pos = start_pos
             possible = True
-            
             first_segment_path = None
 
-            # Calcula custo da rota completa: Start -> F1 -> F2 -> F3
             for i, target in enumerate(perm):
                 path, cost = get_path_cost(current_pos, target)
                 
-                if path is None: # Se algum trecho for impossível
+                if path is None:
                     possible = False
                     break
                 
-                # Guarda o caminho para o PRIMEIRO objetivo da melhor rota
                 if i == 0:
                     first_segment_path = path
 
                 current_cost += cost
-                current_pos = target # O próximo começa de onde este terminou
+                current_pos = target
 
             if possible and current_cost < best_cost:
                 best_cost = current_cost
                 best_first_path = first_segment_path
 
-        # Retorna o caminho completo (incluindo start) para o primeiro objetivo
-        # O jogo só precisa saber o próximo passo imediato, mas retornamos o trajeto até a 1ª comida
         return best_first_path
