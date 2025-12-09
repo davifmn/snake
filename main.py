@@ -5,7 +5,7 @@ from food import food
 from menu import Menu
 from ALGO_PLAYS.game_info import game_info
 from ALGO_PLAYS.A_STAR import A_Star
-from ALGO_PLAYS.A_NEW_STAR import A_Star as A_NewStar  # usa o A_Star novo com outro nome
+from ALGO_PLAYS.A_NEW_STAR import A_NEW_Star as A_NEW_STAR  # usa o A_Star novo com outro nome
 from user import UserController
 
 # --------------------------- FUNÇÕES AUXILIARES ---------------------------
@@ -55,7 +55,7 @@ def check_win(player_snake, rows, cols, info=None):
 class Game:
     def __init__(self, screen, rows, cols, cell_size, mode):
         """
-        mode: "JOGAR", "A_STAR", "A_NEWSTAR"
+        mode: "JOGAR", "A_STAR", "A_NEW_STAR"
         """
         self.screen = screen
         self.rows = rows
@@ -66,37 +66,30 @@ class Game:
         self.game_map = grid.mapa(rows, cols, cell_size)
         self.player_snake = snake(rows, cols, cell_size)
         self.foods = [food(rows, cols, cell_size) for _ in range(3)]
-
-        # posiciona as foods em células livres
         occupied = set(self.player_snake.body)
         for f in self.foods:
             f.relocate_food(occupied)
             if f.POS is not None:
                 occupied.add(f.POS)
 
-        # controlador de input do usuário (sempre existe, mas só é usado no modo JOGAR ou fallback)
-        self.user_controller = UserController(self.player_snake)
 
-        # game_info só é usado em modos com IA
-        if self.mode in ("A_STAR", "A_NEWSTAR"):
-            self.info = game_info(rows, cols)
-        else:
-            self.info = None
-
-        # instância dos algoritmos de IA (quando usados)
         if self.mode == "A_STAR":
+            self.info = game_info(rows, cols)
             self.ai = A_Star(rows, cols)
-        elif self.mode == "A_NEWSTAR":
-            self.ai = A_NewStar(rows, cols)   # <---- usa o novo algoritmo
+        elif self.mode == "A_NEW_STAR":
+            self.ai = A_NEW_STAR(rows, cols) 
+            self.info = game_info(rows, cols)  
         else:
+            self.user_controller = UserController(self.player_snake)
             self.ai = None
+            self.info = None
 
     def run(self):
         clock = pygame.time.Clock()
         running = True
 
         while running:
-            clock.tick(10)  # velocidade da snake
+            clock.tick(10) # controla a velocidade do jogo (10 FPS)
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -105,7 +98,7 @@ class Game:
             # Seleciona a lógica de controle conforme o modo
             if self.mode == "JOGAR":
                 self.user_controller.handle_input()
-            elif self.mode in ("A_STAR", "A_NEWSTAR"):
+            elif self.mode in ("A_STAR", "A_NEW_STAR"):
                 self._handle_ai()
             else:
                 self.user_controller.handle_input()  # fallback
@@ -147,30 +140,45 @@ class Game:
 
     # ---------------------- modos de controle ----------------------
 
+    # ---------------------- modos de controle ----------------------
+
     def _handle_ai(self):
-        """Lógica comum para A_STAR e A_NEWSTAR."""
+        """
+        Lógica comum para A_STAR e A_NEW_STAR. 
+        CORRIGIDA para usar a lógica de wrap-around na definição da orientação.
+        """
         if self.ai is None:
             return
 
         start = self.player_snake.POS
+        # Pega a lista de posições das comidas
         objectives = [f.POS for f in self.foods if f.POS is not None]
         obstacles = self.player_snake.body
 
+        # Roda o A* + TSP para encontrar o melhor caminho
         best_path = self.ai.find_best_path_tsp(start, objectives, obstacles)
 
         if best_path and len(best_path) > 1:
             next_step = best_path[1]
             curr_r, curr_c = start
             next_r, next_c = next_step
-
-            if next_r < curr_r:
+            
+            # --- LÓGICA CORRIGIDA COM WRAP-AROUND (MÓDULO) ---
+            
+            # 1. Movimento Vertical
+            # Verifica se next_r é o resultado de (curr_r -/+ 1) com wrap
+            if next_r == (curr_r - 1) % self.rows:
                 self.player_snake.orientation = "up"
-            elif next_r > curr_r:
+            elif next_r == (curr_r + 1) % self.rows:
                 self.player_snake.orientation = "down"
-            elif next_c < curr_c:
+            
+            # 2. Movimento Horizontal
+            # Verifica se next_c é o resultado de (curr_c -/+ 1) com wrap
+            elif next_c == (curr_c - 1) % self.cols:
                 self.player_snake.orientation = "left"
-            elif next_c > curr_c:
+            elif next_c == (curr_c + 1) % self.cols:
                 self.player_snake.orientation = "right"
+            
 
     # ---------------------- desenho ----------------------
 
@@ -183,13 +191,15 @@ class Game:
         pygame.display.flip()
 
 
-# --------------------------- FUNÇÃO main ---------------------------
+
+
+# ---------------------------  main ---------------------------
 
 def main():
     pygame.init()
 
     CELL_SIZE = 20
-    ROWS, COLS = 20, 30
+    ROWS, COLS = 20, 30 # Ajuste o tamanho do grid conforme necessário
     WIDTH, HEIGHT = COLS * CELL_SIZE, ROWS * CELL_SIZE
 
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -197,18 +207,14 @@ def main():
 
     font = pygame.font.SysFont(None, 48)
 
-    # 1) roda o menu e pega o modo
     menu = Menu(screen, font)
     mode = menu.run()
-
     if mode is None:
         pygame.quit()
         return
 
-    # 2) roda o jogo no modo escolhido
     game = Game(screen, ROWS, COLS, CELL_SIZE, mode)
     game.run()
-
     pygame.quit()
 
 

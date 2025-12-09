@@ -12,53 +12,54 @@ class Node:
     def __lt__(self, other):
         return self.f < other.f
 
-class A_Star:
+class A_NEW_Star:
     def __init__(self, rows, cols):
         self.rows = rows
         self.cols = cols
 
+    def _in_bounds(self, pos):
+        r, c = pos
+        return 0 <= r < self.rows and 0 <= c < self.cols
+
     def heuristic(self, a, b):
-        """
-        Calcula a distância Manhattan considerando o wrap-around.
-        O algoritmo escolhe o menor caminho: direto ou dando a volta no mundo.
-        """
+        """Distância Manhattan com wrap-around."""
+        if not (self._in_bounds(a) and self._in_bounds(b)):
+            # se algo sair da grade, devolve custo alto pra forçar descartar
+            return float('inf')
+
         r1, c1 = a
         r2, c2 = b
         
-        # Distância absoluta linear
         dr = abs(r1 - r2)
         dc = abs(c1 - c2)
         
-        # Escolhe o menor entre: distância direta vs dar a volta pelo outro lado
         dr = min(dr, self.rows - dr)
         dc = min(dc, self.cols - dc)
         
         return dr + dc
 
     def get_neighbors(self, node, obstacles):
-        """
-        Retorna vizinhos considerando que o grid 'dá a volta' (toroide).
-        """
+        """Vizinhos com wrap (toroide), ignorando obstáculos."""
         neighbors = []
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1)] 
 
         for dr, dc in directions:
-            # Calcula posição crua
             raw_r = node.position[0] + dr
             raw_c = node.position[1] + dc
             
-            # Aplica o wrap (módulo)
-            # Se raw_r for -1, vira rows-1. Se for rows, vira 0.
             r = raw_r % self.rows
             c = raw_c % self.cols
 
-            # Verifica se não é obstáculo
             if (r, c) not in obstacles:
                 neighbors.append((r, c))
                 
         return neighbors
 
     def a_star_search(self, start, end, obstacles):
+        # validações de entrada
+        if not (self._in_bounds(start) and self._in_bounds(end)):
+            return None, float('inf')
+
         open_list = []
         closed_set = set()
 
@@ -88,19 +89,16 @@ class A_Star:
                 neighbor = Node(next_pos, current_node)
                 neighbor.g = current_node.g + 1
                 neighbor.h = self.heuristic(neighbor.position, end_node.position)
-                neighbor.f = neighbor.g + neighbor.h
 
-                # Nota: Em implementações completas do A*, verificaríamos se 
-                # o vizinho já está na open_list com um g menor. 
-                # Para grid simples uniformes, adicionar direto funciona bem.
+                if neighbor.h == float('inf'):
+                    continue  # algo inválido, ignora
+
+                neighbor.f = neighbor.g + neighbor.h
                 heapq.heappush(open_list, neighbor)
 
         return None, float('inf')
 
     def find_best_path_tsp(self, start_pos, food_positions, snake_body):
-        """
-        Lógica do Caixeiro Viajante (igual à anterior, mas usando o A* atualizado).
-        """
         if not food_positions:
             return []
 
@@ -108,7 +106,15 @@ class A_Star:
         if start_pos in obstacles:
             obstacles.remove(start_pos)
 
-        perms = list(itertools.permutations(food_positions))
+        # filtra foods fora do grid por segurança
+        valid_foods = [
+            pos for pos in food_positions
+            if pos is not None and self._in_bounds(pos)
+        ]
+        if not valid_foods:
+            return []
+
+        perms = list(itertools.permutations(valid_foods))
         
         best_cost = float('inf')
         best_first_path = None
@@ -131,7 +137,7 @@ class A_Star:
             for i, target in enumerate(perm):
                 path, cost = get_path_cost(current_pos, target)
                 
-                if path is None:
+                if path is None or cost == float('inf'):
                     possible = False
                     break
                 
@@ -146,3 +152,47 @@ class A_Star:
                 best_first_path = first_segment_path
 
         return best_first_path
+
+    def _handle_ai(self):
+        """Lógica comum para A_STAR e A_NEW_STAR."""
+        if self.ai is None:
+            return
+
+        start = self.player_snake.POS
+
+        # objetivos válidos (dentro do grid e não None)
+        objectives = [
+            f.POS for f in self.foods
+            if f.POS is not None
+            and 0 <= f.POS[0] < self.rows
+            and 0 <= f.POS[1] < self.cols
+        ]
+
+        if not objectives:
+            # sem objetivo -> não altera orientação
+            return
+
+        # obstáculos = corpo atual da snake, sempre dentro do grid
+        obstacles = list(self.player_snake.body)
+
+        best_path = self.ai.find_best_path_tsp(start, objectives, obstacles)
+
+        if not best_path or len(best_path) <= 1:
+            return
+
+        next_step = best_path[1]
+        # sanity check: se vier algo estranho, ignora
+        if not (0 <= next_step[0] < self.rows and 0 <= next_step[1] < self.cols):
+            return
+
+        curr_r, curr_c = start
+        next_r, next_c = next_step
+
+        if next_r < curr_r:
+            self.player_snake.orientation = "up"
+        elif next_r > curr_r:
+            self.player_snake.orientation = "down"
+        elif next_c < curr_c:
+            self.player_snake.orientation = "left"
+        elif next_c > curr_c:
+            self.player_snake.orientation = "right"
