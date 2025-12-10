@@ -4,7 +4,7 @@ class Menu:
     def __init__(self, screen, font):
         self.screen = screen
         self.font = font
-        self.options = ["JOGAR", "A_STAR", "A_NEW_STAR"]
+        self.options = ["JOGAR", "A_STAR", "A_NEW_STAR", "NEAT"]
         self.selected_index = 0
 
     def run(self):

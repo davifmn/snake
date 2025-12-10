@@ -17,6 +17,12 @@ class A_Star:
     def __init__(self, rows, cols):
         self.rows = rows
         self.cols = cols
+        # cache simples para não recalcular caminho a cada passo
+        self.current_path = []
+
+    def _in_bounds(self, pos):
+        r, c = pos
+        return 0 <= r < self.rows and 0 <= c < self.cols
 
     def heuristic(self, a, b):
         """Calcula a distância Manhattan (grid)"""
@@ -25,17 +31,13 @@ class A_Star:
     def get_neighbors(self, node, obstacles):
         """Retorna vizinhos válidos (não são obstáculos e estão dentro do grid)"""
         neighbors = []
-        # Cima, Baixo, Esquerda, Direita
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1)] 
 
         for dr, dc in directions:
             r, c = node.position[0] + dr, node.position[1] + dc
 
-            # Verifica limites do grid
-            if 0 <= r < self.rows and 0 <= c < self.cols:
-                # Verifica se não é obstáculo (corpo da snake)
-                if (r, c) not in obstacles:
-                    neighbors.append((r, c))
+            if self._in_bounds((r, c)) and (r, c) not in obstacles:
+                neighbors.append((r, c))
         return neighbors
 
     def a_star_search(self, start, end, obstacles):
@@ -55,14 +57,13 @@ class A_Star:
             current_node = heapq.heappop(open_list)
             closed_set.add(current_node.position)
 
-            # Encontrou o objetivo
             if current_node.position == end:
                 path = []
                 current = current_node
                 while current:
                     path.append(current.position)
                     current = current.parent
-                return path[::-1], len(path) # Retorna caminho invertido e custo
+                return path[::-1], len(path)
 
             neighbors = self.get_neighbors(current_node, obstacles)
             
@@ -75,71 +76,92 @@ class A_Star:
                 neighbor.h = self.heuristic(neighbor.position, end_node.position)
                 neighbor.f = neighbor.g + neighbor.h
 
-                # Verifica se já existe um caminho melhor na open_list
-                # (Simplificação: apenas adiciona, heapq lida com a ordem)
                 heapq.heappush(open_list, neighbor)
 
         return None, float('inf')
 
     def find_best_path_tsp(self, start_pos, food_positions, snake_body):
         """
-        Resolve o problema do Caixeiro Viajante (TSP) para as comidas disponíveis.
-        1. Calcula distâncias entre S->Foods e Foods->Foods.
-        2. Testa todas as permutações de ordem.
-        3. Retorna o caminho IMEDIATO para o primeiro alvo da melhor sequência.
+        Resolve o TSP sobre as foods e devolve o caminho da cabeça até a 1ª food
+        da melhor ordem.
         """
         if not food_positions:
             return []
 
-        # O corpo da cobra é obstáculo, mas a cabeça (start_pos) não deve contar como colisão no início
         obstacles = set(snake_body)
         if start_pos in obstacles:
             obstacles.remove(start_pos)
 
-        # Gerar permutações (ex: [A, B, C], [A, C, B], [B, A, C]...)
         perms = list(itertools.permutations(food_positions))
         
         best_cost = float('inf')
         best_first_path = None
-        
-        # Cache de distâncias para evitar recalcular A* repetidamente para os mesmos pares
         distance_cache = {} 
 
         def get_path_cost(p1, p2):
-            """Helper com cache"""
             key = (p1, p2)
             if key not in distance_cache:
                 path, cost = self.a_star_search(p1, p2, obstacles)
                 distance_cache[key] = (path, cost)
             return distance_cache[key]
 
-        # Avaliar cada permutação
         for perm in perms:
             current_cost = 0
             current_pos = start_pos
             possible = True
-            
             first_segment_path = None
 
-            # Calcula custo da rota completa: Start -> F1 -> F2 -> F3
             for i, target in enumerate(perm):
                 path, cost = get_path_cost(current_pos, target)
-                
-                if path is None: # Se algum trecho for impossível
+                if path is None or cost == float('inf'):
                     possible = False
                     break
-                
-                # Guarda o caminho para o PRIMEIRO objetivo da melhor rota
+
                 if i == 0:
                     first_segment_path = path
 
                 current_cost += cost
-                current_pos = target # O próximo começa de onde este terminou
+                current_pos = target
 
             if possible and current_cost < best_cost:
                 best_cost = current_cost
                 best_first_path = first_segment_path
 
-        # Retorna o caminho completo (incluindo start) para o primeiro objetivo
-        # O jogo só precisa saber o próximo passo imediato, mas retornamos o trajeto até a 1ª comida
         return best_first_path
+
+    # ------------------------ NOVO: interface para o Game ------------------------
+
+    def next_direction(self, start_pos, food_positions, snake_body):
+        """
+        Decide a próxima direção ('up','down','left','right') a partir do estado atual.
+        Reaproveita/mantém um caminho interno em self.current_path.
+        """
+        # 1. Se não temos caminho, calcula um novo
+        if not self.current_path:
+            objectives = [pos for pos in food_positions if pos is not None]
+            path = self.find_best_path_tsp(start_pos, objectives, snake_body)
+            if path and len(path) > 1:
+                # ignorar a posição atual (start_pos) no caminho
+                self.current_path = path[1:]
+            else:
+                return None  # sem caminho
+
+        # 2. Se ainda temos passos no caminho, pega o próximo
+        if not self.current_path:
+            return None
+
+        next_step = self.current_path.pop(0)
+        curr_r, curr_c = start_pos
+        next_r, next_c = next_step
+
+        # sem wrap aqui – A_NEW_Star sobrescreve se precisar
+        if next_r == curr_r - 1:
+            return "up"
+        if next_r == curr_r + 1:
+            return "down"
+        if next_c == curr_c - 1:
+            return "left"
+        if next_c == curr_c + 1:
+            return "right"
+
+        return None
